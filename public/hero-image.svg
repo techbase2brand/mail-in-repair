@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="800" height="600" viewBox="0 0 800 600">
+  <!-- Background shape -->
+  <rect x="100" y="100" width="600" height="400" rx="20" fill="#f0f4f8" stroke="#d1dce5" stroke-width="2"/>
+  
+  <!-- Device outline -->
+  <rect x="250" y="150" width="300" height="200" rx="10" fill="#ffffff" stroke="#4a5568" stroke-width="3"/>
+  
+  <!-- Screen -->
+  <rect x="270" y="170" width="260" height="160" rx="5" fill="#edf2f7"/>
+  
+  <!-- Repair icons -->
+  <circle cx="320" cy="220" r="20" fill="#4299e1" opacity="0.8"/>
+  <circle cx="400" cy="220" r="20" fill="#48bb78" opacity="0.8"/>
+  <circle cx="480" cy="220" r="20" fill="#ed8936" opacity="0.8"/>
+  
+  <!-- Status bars -->
+  <rect x="300" y="270" width="200" height="10" rx="5" fill="#4299e1" opacity="0.7"/>
+  <rect x="300" y="290" width="140" height="10" rx="5" fill="#48bb78" opacity="0.7"/>
+  
+  <!-- Repair tools -->
+  <g transform="translate(180, 300)">
+    <!-- Screwdriver -->
+    <rect x="0" y="0" width="60" height="10" rx="2" transform="rotate(45, 30, 5)" fill="#4a5568"/>
+    <rect x="42" y="-12" width="25" height="8" rx="2" transform="rotate(45, 42, -12)" fill="#4a5568"/>
+  </g>
+  
+  <g transform="translate(520, 300)">
+    <!-- Wrench -->
+    <path d="M0,0 C5,10 15,10 20,0 L40,20 C30,25 30,35 40,40 L20,60 C15,50 5,50 0,40 Z" fill="#4a5568"/>
+  </g>
+  
+  <!-- Magnifying glass -->
+  <circle cx="400" cy="350" r="25" fill="none" stroke="#4a5568" stroke-width="5"/>
+  <line x1="420" y1="370" x2="440" y2="390" stroke="#4a5568" stroke-width="5" stroke-linecap="round"/>
+  
+  <!-- Document/ticket -->
+  <g transform="translate(150, 200)">
+    <rect x="0" y="0" width="60" height="80" fill="#ffffff" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="20" x2="50" y2="20" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="40" x2="50" y2="40" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="60" x2="30" y2="60" stroke="#4a5568" stroke-width="2"/>
+  </g>
+  
+  <!-- Completed ticket -->
+  <g transform="translate(590, 200)">
+    <rect x="0" y="0" width="60" height="80" fill="#ffffff" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="20" x2="50" y2="20" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="40" x2="50" y2="40" stroke="#4a5568" stroke-width="2"/>
+    <line x1="10" y1="60" x2="30" y2="60" stroke="#4a5568" stroke-width="2"/>
+    <path d="M10,30 L20,40 L40,15" fill="none" stroke="#48bb78" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+  </g>
+  
+  <!-- Connection lines -->
+  <path d="M210,240 C230,240 230,250 250,250" fill="none" stroke="#4a5568" stroke-width="2" stroke-dasharray="5,5"/>
+  <path d="M550,240 C570,240 570,250 590,250" fill="none" stroke="#4a5568" stroke-width="2" stroke-dasharray="5,5"/>
+  
+  <!-- Arrows indicating flow -->
+  <path d="M240,250 L250,250 L245,245 Z" fill="#4a5568"/>
+  <path d="M580,250 L590,250 L585,245 Z" fill="#4a5568"/>
+</svg>
