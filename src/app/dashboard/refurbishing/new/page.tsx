@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 
 // Icons
 import { 
@@ -172,6 +173,55 @@ export default function NewRefurbishingTicket() {
             });
           
           if (mediaError) throw mediaError;
+        }
+      }
+      
+      // 3. Send email notification to customer if email is available
+      if (selectedCustomer.email) {
+        try {
+          // Get company information for the email
+          const { data: companyInfo } = await supabase
+            .from('companies')
+            .select('name, logo_url')
+            .eq('id', companyId)
+            .single();
+          
+          // Generate email content
+          const emailHtml = generateNotificationEmail({
+            companyName: companyInfo?.name || 'Repair Shop',
+            companyLogo: companyInfo?.logo_url || undefined,
+            customerName: `${selectedCustomer.first_name} ${selectedCustomer.last_name}`,
+            ticketNumber: ticketData.ticket_number || `RF-${ticketData.id.substring(0, 8)}`,
+            deviceInfo: `${deviceType} ${deviceModel}`,
+            status: 'Submitted',
+            message: 'Your screen refurbishing request has been received. We will begin processing it shortly.',
+            actionUrl: `${window.location.origin}/dashboard/refurbishing/${ticketData.id}`,
+            actionText: 'View Ticket'
+          });
+          
+          // Send the email
+          await sendEmail({
+            to: selectedCustomer.email,
+            subject: `Screen Refurbishing Request Received - ${deviceType} ${deviceModel}`,
+            html: emailHtml,
+            ticketId: ticketData.id,
+            ticketType: 'refurbishing'
+          });
+          
+          // Add a system message about the email notification
+          await supabase
+            .from('refurbishing_conversations')
+            .insert({
+              ticket_id: ticketData.id,
+              message: `Email notification sent to ${selectedCustomer.email}`,
+              sender_type: 'system',
+              message_type: 'email_notification'
+            });
+            
+        } catch (emailError) {
+          console.error('Error sending email notification:', emailError);
+          // Don't throw here, as the ticket was created successfully
+          // Just log the error and continue
         }
       }
       

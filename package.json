@@ -28,6 +28,7 @@
     "html2canvas": "^1.4.1",
     "jspdf": "^2.5.2",
     "next": "13.4.2",
+    "nodemailer": "^7.0.5",
     "postcss": "8.4.23",
     "react": "18.2.0",
     "react-chartjs-2": "^5.2.0",
@@ -45,6 +46,7 @@
   },
   "devDependencies": {
     "@types/node": "20.1.4",
+    "@types/nodemailer": "^6.4.17",
     "@types/react": "18.2.6",
     "@types/react-dom": "18.2.4",
     "@types/uuid": "^9.0.1",

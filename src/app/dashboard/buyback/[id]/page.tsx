@@ -6,6 +6,7 @@ import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import Image from 'next/image';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 import { ArrowLeftIcon, Edit2Icon, SaveIcon, XIcon, CheckIcon, DollarSignIcon, ImageIcon, MessageSquareIcon, ClockIcon, UploadIcon, DownloadIcon, TrashIcon, SendIcon } from '@/components/icons';
 
 type BuybackTicket = {
@@ -239,6 +240,89 @@ export default function BuybackDetailPage({ params }: { params: { id: string } }
       // This functionality needs to be implemented with a proper buyback_status_history table
       if (statusChanged && editedTicket.status) {
         console.log('Status changed to:', editedTicket.status, 'but buyback_status_history table does not exist yet');
+        
+        // Send email notification if status changed and customer has email
+        if (ticket.customer.email) {
+          try {
+            // Get company information for the email
+            const { data: companyData, error: companyError } = await supabase
+              .from('companies')
+              .select('id, name, logo_url')
+              .eq('user_id', (await supabase.auth.getSession()).data.session?.user.id)
+              .single();
+            
+            if (companyError) throw companyError;
+            
+            // Generate status-specific message
+            let statusMessage = '';
+            let actionUrl = `${window.location.origin}/dashboard/buyback/${ticket.id}`;
+            
+            switch(editedTicket.status) {
+              case 'received':
+                statusMessage = 'We have received your device for buyback evaluation.';
+                break;
+              case 'evaluated':
+                statusMessage = 'We have evaluated your device.';
+                if (editedTicket.offered_amount) {
+                  statusMessage += ` Offered amount: $${editedTicket.offered_amount.toFixed(2)}`;
+                }
+                break;
+              case 'pending_payment':
+                statusMessage = 'Your buyback is pending payment.';
+                if (editedTicket.offered_amount) {
+                  statusMessage += ` Amount to be paid: $${editedTicket.offered_amount.toFixed(2)}`;
+                }
+                break;
+              case 'completed':
+                statusMessage = 'Your buyback has been completed and payment has been processed.';
+                break;
+              case 'rejected':
+                statusMessage = 'Unfortunately, we are unable to proceed with the buyback of your device.';
+                break;
+              case 'returned':
+                statusMessage = 'Your device has been returned to you.';
+                break;
+              default:
+                statusMessage = `Your buyback ticket status has been updated to ${statusLabels[editedTicket.status as string]?.label || editedTicket.status}.`;
+            }
+            
+            // Generate email content
+            const emailContent = generateNotificationEmail({
+              companyName: companyData.name,
+              companyLogo: companyData.logo_url,
+              customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+              ticketNumber: ticket.ticket_number,
+              deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+              status: statusLabels[editedTicket.status as string]?.label || editedTicket.status,
+              message: statusMessage,
+              actionUrl: actionUrl,
+              actionText: 'View Buyback Details'
+            });
+            
+            // Send the email
+            await sendEmail({
+              to: ticket.customer.email,
+              subject: `Buyback Update: ${ticket.ticket_number}`,
+              html: emailContent,
+              ticketId: ticket.id,
+              ticketType: 'buyback'
+            });
+            
+            // Add a system message about the email notification
+            await supabase
+              .from('buyback_conversations')
+              .insert({
+                buyback_ticket_id: ticket.id,
+                sender_type: 'staff',
+                content: `Email notification sent to ${ticket.customer.email}`,
+              });
+              
+          } catch (emailError) {
+            console.error('Error sending email notification:', emailError);
+            // Don't throw here, as the ticket was updated successfully
+            // Just log the error and continue
+          }
+        }
       }
       
       toast.success('Buyback ticket updated successfully');

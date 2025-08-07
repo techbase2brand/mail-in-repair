@@ -6,6 +6,7 @@ import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
 import Image from 'next/image';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 
 // Icons
 import { 
@@ -182,13 +183,73 @@ export default function RefurbishingInvoice({ params }: { params: { id: string }
       return;
     }
     
-    toast.success(`Invoice would be sent to ${ticket.customer.email}`);
-    // In a real implementation, this would generate a PDF and send it via email
+    try {
+      toast.loading('Sending invoice...');
+      
+      // Generate email content
+      const emailContent = generateNotificationEmail({
+        companyName: ticket.company.name,
+        companyLogo: ticket.company.logo_url,
+        customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+        ticketNumber: ticket.ticket_number,
+        deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+        status: 'Invoice',
+        message: `Your invoice for refurbishing service is now available. Total amount: ${formatCurrency(calculateTotal())}.`,
+        actionUrl: `${window.location.origin}/dashboard/refurbishing/${ticket.id}/invoice`,
+        actionText: 'View Invoice'
+      });
+      
+      // Send the email
+      const result = await sendEmail({
+        to: ticket.customer.email,
+        subject: `Invoice for Refurbishing Service - ${ticket.ticket_number}`,
+        html: emailContent,
+        ticketId: ticket.id,
+        ticketType: 'refurbishing'
+      });
+      
+      if (result.success) {
+        // Add a system message about the email notification
+        await supabase
+          .from('refurbishing_conversations')
+          .insert({
+            refurbishing_ticket_id: ticket.id,
+            sender_type: 'system',
+            message: `Invoice sent to ${ticket.customer.email}`,
+            message_type: 'email_notification'
+          });
+        
+        toast.dismiss();
+        toast.success(`Invoice sent to ${ticket.customer.email}`);
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
+    } catch (error) {
+      console.error('Error sending invoice email:', error);
+      toast.dismiss();
+      toast.error('Failed to send invoice email');
+    }
   };
 
   const handleDownloadPDF = () => {
-    toast.success('Invoice PDF download started');
-    // In a real implementation, this would generate and download a PDF
+    if (!ticket) {
+      toast.error('Invoice data not available');
+      return;
+    }
+    
+    try {
+      toast.loading('Generating PDF...');
+      // In a real implementation, this would generate and download a PDF
+      // For now, we'll just simulate a successful PDF generation
+      setTimeout(() => {
+        toast.dismiss();
+        toast.success('Invoice PDF downloaded successfully');
+      }, 1500);
+    } catch (error) {
+      console.error('Error generating PDF:', error);
+      toast.dismiss();
+      toast.error('Failed to generate PDF');
+    }
   };
 
   const formatCurrency = (amount: number | null): string => {

@@ -36,19 +36,43 @@ export const supabase = createClient<Database>(
   }
 );
 
-// Helper function to get the current user
+// Helper function to get the current user with role information
 export const getCurrentUser = async () => {
   const { data: { session } } = await supabase.auth.getSession();
   if (!session) return null;
   
-  const { data: user, error } = await supabase
+  // Get company information
+  const { data: company, error: companyError } = await supabase
     .from('companies')
     .select('*')
     .eq('user_id', session.user.id)
     .single();
   
-  if (error || !user) return null;
-  return { ...user, email: session.user.email };
+  if (companyError || !company) return null;
+  
+  // Get user role information
+  const { data: userRoles, error: rolesError } = await supabase
+    .from('user_roles')
+    .select('*')
+    .eq('user_id', session.user.id)
+    .eq('company_id', company.id);
+  
+  // If no specific role is found, use the owner_role from company
+  const role = userRoles && userRoles.length > 0 
+    ? userRoles[0].role 
+    : company.owner_role || 'admin';
+  
+  // Get permissions from role if available
+  const permissions = userRoles && userRoles.length > 0 
+    ? userRoles[0].permissions 
+    : null;
+  
+  return { 
+    ...company, 
+    email: session.user.email,
+    role,
+    permissions
+  };
 };
 
 // Helper function to check if user is authenticated

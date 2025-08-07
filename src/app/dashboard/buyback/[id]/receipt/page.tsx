@@ -18,6 +18,7 @@ import {
 import { useReactToPrint } from 'react-to-print';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 
 type BuybackTicket = {
   id: string;
@@ -209,20 +210,59 @@ export default function BuybackReceiptPage({ params }: { params: { id: string } 
     }
     
     try {
-      toast.loading('Sending email...');
+      toast.loading('Sending receipt...');
       
-      // Here you would implement the email sending logic
-      // This could be a call to a serverless function or API endpoint
+      // Get company information
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', ticket.company_id)
+        .single();
       
-      // For now, we'll just simulate a successful email send
-      await new Promise(resolve => setTimeout(resolve, 1500));
+      if (companyError) throw companyError;
       
-      toast.dismiss();
-      toast.success(`Receipt sent to ${ticket.customer.email}`);
+      // Generate email content
+      const emailContent = generateNotificationEmail({
+        companyName: companyData.name,
+        companyLogo: companyData.logo_url || undefined,
+        customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+        ticketNumber: ticket.ticket_number,
+        deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+        status: 'Payment Receipt',
+        message: `Your receipt for the buyback of your ${ticket.device_type} ${ticket.device_model} is now available. Amount paid: ${formatCurrency(ticket.offered_amount)}.`,
+        actionUrl: `${window.location.origin}/dashboard/buyback/${ticket.id}/receipt`,
+        actionText: 'View Receipt'
+      });
+      
+      // Send the email
+      const result = await sendEmail({
+        to: ticket.customer.email,
+        subject: `Buyback Receipt - ${ticket.ticket_number}`,
+        html: emailContent,
+        ticketId: ticket.id,
+        ticketType: 'buyback'
+      });
+      
+      if (result.success) {
+        // Add a system message about the email notification
+        await supabase
+          .from('buyback_conversations')
+          .insert({
+            buyback_ticket_id: ticket.id,
+            sender_type: 'staff',
+            content: `Receipt sent to ${ticket.customer.email}`,
+            message_type: 'email_notification'
+          });
+        
+        toast.dismiss();
+        toast.success(`Receipt sent to ${ticket.customer.email}`);
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
     } catch (error) {
-      console.error('Error sending email:', error);
+      console.error('Error sending receipt email:', error);
       toast.dismiss();
-      toast.error('Failed to send email');
+      toast.error('Failed to send receipt email');
     }
   };
 

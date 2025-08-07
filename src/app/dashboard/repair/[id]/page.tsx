@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 import { 
   ArrowLeftIcon, 
   Edit2Icon, 
@@ -270,6 +271,89 @@ export default function RepairTicketDetail({ params }: { params: { id: string } 
           });
         
         if (historyError) throw historyError;
+        
+        // Send email notification if status changed and customer has email
+        if (ticket.customer?.email) {
+          try {
+            // Get company information for the email
+            const { data: companyData, error: companyError } = await supabase
+              .from('companies')
+              .select('id, name, logo_url')
+              .eq('user_id', (await supabase.auth.getSession()).data.session?.user.id)
+              .single();
+            
+            if (companyError) throw companyError;
+            
+            // Generate status-specific message
+            let statusMessage = '';
+            let actionUrl = `${window.location.origin}/dashboard/repair/${ticket.id}`;
+            
+            switch(editedTicket.status) {
+              case 'received':
+                statusMessage = 'We have received your device for repair.';
+                break;
+              case 'diagnosed':
+                statusMessage = 'We have diagnosed your device issue.';
+                if (editedTicket.diagnosis) {
+                  statusMessage += ` Diagnosis: ${editedTicket.diagnosis}`;
+                }
+                if (editedTicket.estimated_cost) {
+                  statusMessage += ` Estimated cost: $${editedTicket.estimated_cost.toFixed(2)}`;
+                }
+                break;
+              case 'in_progress':
+                statusMessage = 'Your device repair is now in progress.';
+                break;
+              case 'completed':
+                statusMessage = 'Your device repair has been completed.';
+                if (editedTicket.actual_cost) {
+                  statusMessage += ` Final cost: $${editedTicket.actual_cost.toFixed(2)}`;
+                }
+                break;
+              case 'shipped':
+                statusMessage = 'Your repaired device has been shipped back to you.';
+                break;
+              default:
+                statusMessage = `Your repair ticket status has been updated to ${formatStatus(editedTicket.status as string)}.`;
+            }
+            
+            // Generate email content
+            const emailContent = generateNotificationEmail({
+              companyName: companyData.name,
+              companyLogo: companyData.logo_url,
+              customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+              ticketNumber: ticket.ticket_number,
+              deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+              status: formatStatus(editedTicket.status as string),
+              message: statusMessage,
+              actionUrl: actionUrl,
+              actionText: 'View Repair Details'
+            });
+            
+            // Send the email
+            await sendEmail({
+              to: ticket.customer.email,
+              subject: `Repair Update: ${ticket.ticket_number}`,
+              html: emailContent,
+              ticketId: ticket.id,
+              ticketType: 'repair'
+            });
+            
+            // Add a system message about the email notification
+            await supabase
+              .from('repair_conversations')
+              .insert({
+                repair_ticket_id: ticket.id,
+                sender_type: 'system',
+                content: `Email notification sent to ${ticket.customer.email}`,
+              });
+              
+          } catch (emailError) {
+            console.error('Error sending email notification:', emailError);
+            // Don't throw here, as the ticket was updated successfully
+            // Just log the error and continue
+          }
+        }
       }
       
       toast.success('Repair ticket updated successfully');

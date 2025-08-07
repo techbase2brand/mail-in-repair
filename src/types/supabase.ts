@@ -9,6 +9,35 @@ export type Json =
 export interface Database {
   public: {
     Tables: {
+      user_roles: {
+        Row: {
+          id: string
+          company_id: string
+          user_id: string
+          role: string
+          permissions: Json
+          created_at: string
+          updated_at: string
+        }
+        Insert: {
+          id?: string
+          company_id: string
+          user_id: string
+          role: string
+          permissions?: Json
+          created_at?: string
+          updated_at?: string
+        }
+        Update: {
+          id?: string
+          company_id?: string
+          user_id?: string
+          role?: string
+          permissions?: Json
+          created_at?: string
+          updated_at?: string
+        }
+      }
       companies: {
         Row: {
           id: string
@@ -18,6 +47,7 @@ export interface Database {
           phone: string
           email: string
           user_id: string
+          owner_role: string
         }
         Insert: {
           id?: string
@@ -27,6 +57,7 @@ export interface Database {
           phone: string
           email: string
           user_id: string
+          owner_role?: string
         }
         Update: {
           id?: string
@@ -36,6 +67,7 @@ export interface Database {
           phone?: string
           email?: string
           user_id?: string
+          owner_role?: string
         }
       }
       repair_categories: {

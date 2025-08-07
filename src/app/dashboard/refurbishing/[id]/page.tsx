@@ -1,10 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
 import Link from 'next/link';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 import Image from 'next/image';
 
 // Icons
@@ -50,6 +51,7 @@ type RefurbishingTicket = {
   notes: string | null;
   created_at: string;
   updated_at: string;
+  company_id: string;
 };
 
 type Media = {
@@ -170,6 +172,7 @@ export default function RefurbishingTicketDetail({ params }: { params: { id: str
           notes,
           created_at,
           updated_at,
+          company_id,
           customers(id, first_name, last_name, email, phone),
           technicians(id, first_name, last_name)
         `)
@@ -197,6 +200,7 @@ export default function RefurbishingTicketDetail({ params }: { params: { id: str
         device_type: ticketData.device_type,
         device_model: ticketData.device_model,
         screen_condition_before: ticketData.screen_condition_before,
+        company_id: ticketData.company_id,
         screen_condition_after: ticketData.screen_condition_after,
         refurbishing_cost: ticketData.refurbishing_cost,
         status: ticketData.status,
@@ -304,6 +308,80 @@ export default function RefurbishingTicketDetail({ params }: { params: { id: str
             sender_type: 'system',
             message: `Status changed from ${ticket.status} to ${status}`,
           });
+        
+        // Send email notification if status changed and customer has email
+        if (ticket.customer.email) {
+          try {
+            // Get company information for the email
+            const { data: companyData, error: companyError } = await supabase
+              .from('companies')
+              .select('name, logo_url')
+              .eq('id', ticket.company_id)
+              .single();
+            
+            if (companyError) throw companyError;
+            
+            // Generate status-specific message
+            let statusMessage = '';
+            let actionUrl = `${window.location.origin}/dashboard/refurbishing/${ticket.id}`;
+            
+            switch(status) {
+              case 'received':
+                statusMessage = 'We have received your device for refurbishing.';
+                break;
+              case 'graded':
+                statusMessage = `We have graded your device screen as ${screenConditionBefore || 'Grade Unknown'}.`;
+                break;
+              case 'in_progress':
+                statusMessage = 'Your device refurbishing is now in progress.';
+                break;
+              case 'completed':
+                statusMessage = 'Your device refurbishing has been completed.';
+                break;
+              case 'shipped':
+                statusMessage = 'Your refurbished device has been shipped back to you.';
+                break;
+              default:
+                statusMessage = `Your refurbishing ticket status has been updated to ${status}.`;
+            }
+            
+            // Generate email content
+            const emailContent = generateNotificationEmail({
+              companyName: companyData.name,
+              companyLogo: companyData.logo_url,
+              customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+              ticketNumber: ticket.ticket_number,
+              deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+              status: statusLabels[status]?.label || status,
+              message: statusMessage,
+              actionUrl: actionUrl,
+              actionText: 'View Ticket Details'
+            });
+            
+            // Send the email
+            await sendEmail({
+              to: ticket.customer.email,
+              subject: `Refurbishing Update: ${ticket.ticket_number}`,
+              html: emailContent,
+              ticketId: ticket.id,
+              ticketType: 'refurbishing'
+            });
+            
+            // Add a system message about the email notification
+            await supabase
+              .from('refurbishing_conversations')
+              .insert({
+                refurbishing_ticket_id: ticket.id,
+                sender_type: 'system',
+                message: `Email notification sent to ${ticket.customer.email}`,
+              });
+              
+          } catch (emailError) {
+            console.error('Error sending email notification:', emailError);
+            // Don't throw here, as the ticket was updated successfully
+            // Just log the error and continue
+          }
+        }
       }
       
       toast.success('Ticket updated successfully');

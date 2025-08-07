@@ -5,6 +5,8 @@ import { useRouter, usePathname } from 'next/navigation'
 import { useSupabase } from '@/components/supabase-provider'
 import Link from 'next/link'
 import Image from 'next/image'
+import RoleBasedNavigation from './RoleBasedNavigation'
+import { useRoleAccess } from '@/hooks/useRoleAccess'
 import {
   ArrowLeftIcon,
   Edit2Icon,
@@ -47,6 +49,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const router = useRouter()
   const pathname = usePathname()
   const { supabase, session } = useSupabase()
+  const { role, loading: roleLoading } = useRoleAccess()
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
@@ -89,21 +92,61 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
   // Navigation configuration
 
-  // Navigation items
+  // Navigation items with permission requirements
   const navigation = [
     { name: 'Dashboard', href: '/dashboard', icon: PackageIcon },
-    { name: 'Repairs', href: '/dashboard/repair', icon: ToolIcon },
-    { name: 'Customers', href: '/dashboard/customers', icon: UserIcon },
-    { name: 'Technicians', href: '/dashboard/technicians', icon: ToolIcon },
-    { name: 'Inventory', href: '/dashboard/inventory', icon: PackageIcon },
-    { name: 'Reports', href: '/dashboard/reports', icon: ClockIcon },
-    { name: 'Settings', href: '/dashboard/settings', icon: Edit2Icon },
+    { 
+      name: 'Repairs', 
+      href: '/dashboard/repair', 
+      icon: ToolIcon,
+      requiredPermission: { resource: 'repair_tickets', action: 'read' }
+    },
+    { 
+      name: 'Customers', 
+      href: '/dashboard/customers', 
+      icon: UserIcon,
+      requiredPermission: { resource: 'customers', action: 'read' }
+    },
+    { 
+      name: 'Technicians', 
+      href: '/dashboard/technicians', 
+      icon: ToolIcon,
+      requiredPermission: { resource: 'technicians', action: 'read' }
+    },
+    { 
+      name: 'Inventory', 
+      href: '/dashboard/inventory', 
+      icon: PackageIcon,
+      requiredPermission: { resource: 'refurbished_inventory', action: 'read' }
+    },
+    { 
+      name: 'Reports', 
+      href: '/dashboard/reports', 
+      icon: ClockIcon,
+      requiredPermission: { resource: 'reports', action: 'read' }
+    },
+    { 
+      name: 'Settings', 
+      href: '/dashboard/settings', 
+      icon: Edit2Icon,
+      requiredPermission: { resource: 'settings', action: 'read' }
+    },
   ]
 
-  // Secondary navigation items
+  // Secondary navigation items with permission requirements
   const secondaryNavigation = [
-    { name: 'Buyback Module', href: '/dashboard/buyback', icon: DollarSignIcon },
-    { name: 'Refurbishing Module', href: '/dashboard/refurbishing', icon: ImageIcon },
+    { 
+      name: 'Buyback Module', 
+      href: '/dashboard/buyback', 
+      icon: DollarSignIcon,
+      requiredPermission: { resource: 'buyback_tickets', action: 'read' }
+    },
+    { 
+      name: 'Refurbishing Module', 
+      href: '/dashboard/refurbishing', 
+      icon: ImageIcon,
+      requiredPermission: { resource: 'refurbishing_tickets', action: 'read' }
+    },
   ]
 
   if (loading) {
@@ -146,40 +189,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex-shrink-0 flex items-center px-4">
               <h1 className="text-xl font-bold text-white">PRC Repair</h1>
             </div>
-            <nav className="mt-5 px-2 space-y-1">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`group flex items-center px-2 py-2 text-base font-medium rounded-md ${isActive ? 'bg-primary-900 text-white' : 'text-primary-100 hover:bg-primary-700'}`}
-                  >
-                    <item.icon className={`mr-4 flex-shrink-0 h-6 w-6 ${isActive ? 'text-primary-300' : 'text-primary-200'}`} />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </nav>
+            <RoleBasedNavigation items={navigation} isMobile={true} />
           </div>
 
           {/* Secondary navigation */}
           <div className="pt-1 pb-3 border-t border-primary-700">
-            <div className="px-2 space-y-1">
-              {secondaryNavigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${isActive ? 'bg-primary-900 text-white' : 'text-primary-100 hover:bg-primary-700'}`}
-                  >
-                    <item.icon className={`mr-3 flex-shrink-0 h-5 w-5 ${isActive ? 'text-primary-300' : 'text-primary-200'}`} />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </div>
+            <RoleBasedNavigation items={secondaryNavigation} isMobile={true} />
           </div>
 
           {/* User profile */}
@@ -194,6 +209,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="ml-3">
                   <p className="text-base font-medium text-white">
                     {userProfile?.name || 'Company Name'}
+                  </p>
+                  <p className="text-xs text-primary-300">
+                    Role: {role || 'Loading...'}
                   </p>
                   <button 
                     onClick={handleSignOut}
@@ -219,40 +237,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <div className="flex items-center flex-shrink-0 px-4">
               <h1 className="text-xl font-bold text-white">PRC Repair</h1>
             </div>
-            <nav className="mt-5 flex-1 px-2 space-y-1">
-              {navigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${isActive ? 'bg-primary-900 text-white' : 'text-primary-100 hover:bg-primary-700'}`}
-                  >
-                    <item.icon className={`mr-3 flex-shrink-0 h-6 w-6 ${isActive ? 'text-primary-300' : 'text-primary-200'}`} />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </nav>
+            <RoleBasedNavigation items={navigation} />
           </div>
 
           {/* Secondary navigation */}
           <div className="pt-1 pb-3 border-t border-primary-700">
-            <div className="px-2 space-y-1">
-              {secondaryNavigation.map((item) => {
-                const isActive = pathname === item.href || pathname?.startsWith(`${item.href}/`)
-                return (
-                  <Link
-                    key={item.name}
-                    href={item.href}
-                    className={`group flex items-center px-2 py-2 text-sm font-medium rounded-md ${isActive ? 'bg-primary-900 text-white' : 'text-primary-100 hover:bg-primary-700'}`}
-                  >
-                    <item.icon className={`mr-3 flex-shrink-0 h-5 w-5 ${isActive ? 'text-primary-300' : 'text-primary-200'}`} />
-                    {item.name}
-                  </Link>
-                )
-              })}
-            </div>
+            <RoleBasedNavigation items={secondaryNavigation} />
           </div>
 
           {/* User profile */}
@@ -267,6 +257,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
                 <div className="ml-3">
                   <p className="text-sm font-medium text-white">
                     {userProfile?.name || 'Company Name'}
+                  </p>
+                  <p className="text-xs text-primary-300">
+                    Role: {role || 'Loading...'}
                   </p>
                   <button 
                     onClick={handleSignOut}

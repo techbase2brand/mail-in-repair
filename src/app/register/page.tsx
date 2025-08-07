@@ -17,6 +17,7 @@ export default function Register() {
     firstName: '',
     lastName: '',
     phone: '',
+    role: 'admin',
   })
   const [loading, setLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
@@ -111,7 +112,8 @@ export default function Register() {
                 contact_email: formData.email,
                 contact_phone: formData.phone,
                 contact_name: `${formData.firstName} ${formData.lastName}`,
-                status: 'pending' // Requires admin approval
+                status: 'pending', // Requires admin approval
+                owner_role: formData.role // Set the owner's role
               }
             ]);
 
@@ -202,6 +204,27 @@ export default function Register() {
                     className="form-input"
                   />
                 </div>
+              </div>
+
+              <div>
+                <label htmlFor="role" className="block text-sm font-medium text-gray-700">
+                  Your Role
+                </label>
+                <div className="mt-1">
+                  <select
+                    id="role"
+                    name="role"
+                    value={formData.role}
+                    onChange={handleChange}
+                    className="form-select block w-full py-2 px-3 border border-gray-300 bg-white rounded-md shadow-sm focus:outline-none focus:ring-primary-500 focus:border-primary-500"
+                  >
+                    <option value="admin">Admin</option>
+                    <option value="manager">Manager</option>
+                    <option value="technician">Technician</option>
+                    <option value="receptionist">Receptionist</option>
+                  </select>
+                </div>
+                <p className="mt-1 text-sm text-gray-500">This will be your role in the company.</p>
               </div>
             </div>
 

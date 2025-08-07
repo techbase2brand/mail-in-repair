@@ -17,6 +17,7 @@ import {
 import { useReactToPrint } from 'react-to-print';
 import html2canvas from 'html2canvas';
 import jsPDF from 'jspdf';
+import { sendEmail, generateNotificationEmail } from '@/utils/email';
 
 type RepairTicket = {
   id: string;
@@ -218,19 +219,57 @@ export default function RepairInvoicePage({ params }: { params: { id: string } }
     try {
       toast.loading('Sending invoice...');
       
-      // Here you would implement the email sending logic
-      // This could be a call to a serverless function or API endpoint
+      // Get company information
+      const { data: companyData, error: companyError } = await supabase
+        .from('companies')
+        .select('*')
+        .eq('id', company.id)
+        .single();
       
-      // For now, we'll just simulate a successful email send
-      setTimeout(() => {
+      if (companyError) throw companyError;
+      
+      // Generate email content
+      const emailContent = generateNotificationEmail({
+        companyName: company.name,
+        companyLogo: company.logo_url || undefined,
+        customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
+        ticketNumber: ticket.ticket_number,
+        deviceInfo: `${ticket.device_type} ${ticket.device_model}`,
+        status: 'Invoice',
+        message: `Your invoice for repair service is now available. Total amount: ${formatCurrency(calculateTotal())}.`,
+        actionUrl: `${window.location.origin}/dashboard/repair/${ticket.id}/invoice`,
+        actionText: 'View Invoice'
+      });
+      
+      // Send the email
+      const result = await sendEmail({
+        to: ticket.customer.email,
+        subject: `Invoice for Repair Service - ${ticket.ticket_number}`,
+        html: emailContent,
+        ticketId: ticket.id,
+        ticketType: 'repair'
+      });
+      
+      if (result.success) {
+        // Add a system message about the email notification
+        await supabase
+          .from('repair_conversations')
+          .insert({
+            repair_ticket_id: ticket.id,
+            sender_type: 'system',
+            content: `Invoice sent to ${ticket.customer.email}`,
+            message_type: 'email_notification'
+          });
+        
         toast.dismiss();
-        toast.success(`Invoice sent to ${ticket.customer?.email}`);
-      }, 2000);
-      
+        toast.success(`Invoice sent to ${ticket.customer.email}`);
+      } else {
+        throw new Error(result.error || 'Failed to send email');
+      }
     } catch (error) {
-      console.error('Error sending email:', error);
+      console.error('Error sending invoice email:', error);
       toast.dismiss();
-      toast.error('Failed to send email');
+      toast.error('Failed to send invoice email');
     }
   };
 

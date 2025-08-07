@@ -19,8 +19,21 @@ CREATE TABLE IF NOT EXISTS companies (
   logo_url TEXT,
   website VARCHAR(255),
   status VARCHAR(50) NOT NULL DEFAULT 'pending', -- pending, active, suspended
+  owner_role VARCHAR(50) NOT NULL DEFAULT 'admin', -- Role of the primary user (owner)
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
   updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- User roles table
+CREATE TABLE IF NOT EXISTS user_roles (
+  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
+  user_id UUID NOT NULL,
+  role VARCHAR(50) NOT NULL, -- admin, manager, technician, receptionist, etc.
+  permissions JSONB,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  UNIQUE(company_id, user_id)
 );
 
 -- Repair categories table
@@ -398,6 +411,23 @@ ALTER TABLE pricing_sheets ENABLE ROW LEVEL SECURITY;
 ALTER TABLE pricing_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE settings ENABLE ROW LEVEL SECURITY;
 ALTER TABLE refurbished_inventory ENABLE ROW LEVEL SECURITY;
+ALTER TABLE user_roles ENABLE ROW LEVEL SECURITY;
+
+-- Create a function to get user ID by email (for role management)
+CREATE OR REPLACE FUNCTION get_user_id_by_email(email_input TEXT)
+RETURNS UUID
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+  user_id UUID;
+BEGIN
+  -- This function allows finding a user ID by email
+  -- It's used for adding users to roles in a company
+  SELECT id INTO user_id FROM auth.users WHERE email = email_input;
+  RETURN user_id;
+END;
+$$;
 ALTER TABLE invoice_items ENABLE ROW LEVEL SECURITY;
 ALTER TABLE warranties ENABLE ROW LEVEL SECURITY;
 ALTER TABLE buyback_tickets ENABLE ROW LEVEL SECURITY;
@@ -751,6 +781,61 @@ BEGIN
       FOR UPDATE USING (
         company_id IN (
           SELECT id FROM companies WHERE user_id = auth.uid()
+        )
+      );
+  END IF;
+END
+$$;
+
+-- Create policies for user_roles table
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_roles' AND policyname = 'Company admins can view user roles') THEN
+    CREATE POLICY "Company admins can view user roles" ON user_roles
+      FOR SELECT USING (
+        company_id IN (
+          SELECT id FROM companies WHERE user_id = auth.uid() AND owner_role = 'admin'
+        )
+        OR
+        user_id = auth.uid()
+      );
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_roles' AND policyname = 'Company admins can insert user roles') THEN
+    CREATE POLICY "Company admins can insert user roles" ON user_roles
+      FOR INSERT WITH CHECK (
+        company_id IN (
+          SELECT id FROM companies WHERE user_id = auth.uid() AND owner_role = 'admin'
+        )
+      );
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_roles' AND policyname = 'Company admins can update user roles') THEN
+    CREATE POLICY "Company admins can update user roles" ON user_roles
+      FOR UPDATE USING (
+        company_id IN (
+          SELECT id FROM companies WHERE user_id = auth.uid() AND owner_role = 'admin'
+        )
+      );
+  END IF;
+END
+$$;
+
+DO $$
+BEGIN
+  IF NOT EXISTS (SELECT 1 FROM pg_policies WHERE tablename = 'user_roles' AND policyname = 'Company admins can delete user roles') THEN
+    CREATE POLICY "Company admins can delete user roles" ON user_roles
+      FOR DELETE USING (
+        company_id IN (
+          SELECT id FROM companies WHERE user_id = auth.uid() AND owner_role = 'admin'
         )
       );
   END IF;
