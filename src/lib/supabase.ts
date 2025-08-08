@@ -12,14 +12,34 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
 // Custom fetch with timeout and retry logic
 const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit, timeout = 15000): Promise<Response> => {
   const controller = new AbortController();
-  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  const timeoutId = setTimeout(() => controller.abort('Request timeout'), timeout);
   
   try {
+    // Check if we're in a browser environment before making the request
+    if (typeof window === 'undefined') {
+      // In SSR, we'll use a standard fetch without timeout
+      // This prevents issues with AbortController in Node.js environments
+      if (init?.signal) {
+        // If there's already a signal, we need to respect it
+        return await fetch(input, init);
+      } else {
+        return await fetch(input, init);
+      }
+    }
+    
+    // In browser environment, use timeout
     const response = await fetch(input, {
       ...init,
       signal: controller.signal
     });
     return response;
+  } catch (error: any) {
+    // Improve error handling for network issues
+    if (error.name === 'AbortError') {
+      throw new Error('Request timeout: The connection to the server timed out');
+    }
+    // Rethrow the original error with more context
+    throw new Error(`Network error: ${error.message || 'Failed to connect to the server'}`);
   } finally {
     clearTimeout(timeoutId);
   }
@@ -40,6 +60,10 @@ export const supabase = createClient<Database>(
       storage: {
         getItem: (key) => {
           try {
+            // Check if localStorage is available (not in SSR)
+            if (typeof window === 'undefined') {
+              return null;
+            }
             const storedItem = localStorage.getItem(key);
             return storedItem;
           } catch (error) {
@@ -49,6 +73,10 @@ export const supabase = createClient<Database>(
         },
         setItem: (key, value) => {
           try {
+            // Check if localStorage is available (not in SSR)
+            if (typeof window === 'undefined') {
+              return;
+            }
             localStorage.setItem(key, value);
           } catch (error) {
             console.error('Error writing to localStorage:', error);
@@ -56,6 +84,10 @@ export const supabase = createClient<Database>(
         },
         removeItem: (key) => {
           try {
+            // Check if localStorage is available (not in SSR)
+            if (typeof window === 'undefined') {
+              return;
+            }
             localStorage.removeItem(key);
           } catch (error) {
             console.error('Error removing from localStorage:', error);

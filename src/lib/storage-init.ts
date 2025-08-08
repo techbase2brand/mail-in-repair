@@ -1,23 +1,38 @@
 import { supabase } from './supabase';
+import { withRetry } from '@/utils/connection';
 
 // Function to create a single bucket with error handling
 const createBucketIfNotExists = async (bucketName: string) => {
+  // Skip in SSR environment
+  if (typeof window === 'undefined') {
+    console.log('Skipping bucket creation in SSR environment');
+    return true;
+  }
+  
   try {
     console.log(`Checking if bucket '${bucketName}' exists...`);
     
-    // First try to get the bucket to see if it exists
-    const { data, error } = await supabase.storage.getBucket(bucketName);
+    // First try to get the bucket to see if it exists, with retry logic
+    const { data, error } = await withRetry(
+      async () => await supabase.storage.getBucket(bucketName),
+      2, // Maximum 2 retries
+      1000 // Base delay of 1 second
+    );
     
     // If bucket doesn't exist, create it
     if (error) {
       if (error.message.includes('not found') || error.message.includes('does not exist')) {
         console.log(`Bucket '${bucketName}' not found, creating it...`);
         
-        // Create the bucket with public access
-        const { error: createError } = await supabase.storage.createBucket(bucketName, {
-          public: true, // Make bucket public by default
-          fileSizeLimit: 10485760, // 10MB
-        });
+        // Create the bucket with public access, with retry logic
+        const { error: createError } = await withRetry(
+          async () => await supabase.storage.createBucket(bucketName, {
+            public: true, // Make bucket public by default
+            fileSizeLimit: 10485760, // 10MB
+          }),
+          2, // Maximum 2 retries
+          1000 // Base delay of 1 second
+        );
         
         if (createError) {
           console.error(`Error creating '${bucketName}' bucket:`, createError);
@@ -25,7 +40,12 @@ const createBucketIfNotExists = async (bucketName: string) => {
         }
         
         // Double-check the bucket was created and is public
-        const { error: checkError } = await supabase.storage.getBucket(bucketName);
+        const { error: checkError } = await withRetry(
+          async () => await supabase.storage.getBucket(bucketName),
+          1, // Just 1 retry
+          1000 // Base delay of 1 second
+        );
+        
         if (checkError) {
           console.error(`Bucket '${bucketName}' was not created properly:`, checkError);
           return false;
@@ -41,9 +61,13 @@ const createBucketIfNotExists = async (bucketName: string) => {
     
     // If we get here, bucket exists, ensure it's public
     console.log(`Bucket '${bucketName}' already exists, ensuring it's public...`);
-   const { error: updateError } = await supabase.storage.updateBucket(bucketName, {
-      public: true
-    });
+    const { error: updateError } = await withRetry(
+      async () => await supabase.storage.updateBucket(bucketName, {
+        public: true
+      }),
+      1, // Just 1 retry
+      1000 // Base delay of 1 second
+    );
     
     if (updateError) {
       console.error(`Error updating bucket '${bucketName}' to public:`, updateError);

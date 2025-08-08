@@ -45,6 +45,13 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
   const SESSION_CACHE_TIMEOUT = 60 * 1000;
 
   useEffect(() => {
+    // Skip session fetching in SSR
+    if (typeof window === 'undefined') {
+      console.log('Skipping session fetch in SSR');
+      setIsLoading(false);
+      return;
+    }
+    
     const fetchSession = async () => {
       // Skip if already fetching
       if (isFetchingRef.current) return;
@@ -59,18 +66,31 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       try {
         isFetchingRef.current = true;
         
-        // Check connection before attempting to fetch session
-        const isConnected = await testConnection();
-        if (!isConnected) {
-          console.error('No internet connection available');
-          throw new Error('Connection error');
+        // Only check connection in browser environment
+        if (typeof window !== 'undefined') {
+          // Check connection before attempting to fetch session
+          const isConnected = await testConnection();
+          if (!isConnected) {
+            console.error('No internet connection available');
+            // Don't throw, just set loading to false and return
+            setIsLoading(false);
+            return;
+          }
         }
         
         // Use retry logic for fetching the session
         const { data, error } = await withRetry(
           async () => await supabase.auth.getSession(),
           3, // Maximum 3 retries (4 attempts total)
-          1000 // Base delay of 1 second
+          1000, // Base delay of 1 second
+          // Only retry network/timeout errors, not auth errors
+          (err) => {
+            const msg = err?.message || '';
+            return msg.includes('network') || 
+                   msg.includes('timeout') || 
+                   msg.includes('connection') || 
+                   msg.includes('fetch failed');
+          }
         );
         
         if (error) {
@@ -88,6 +108,8 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
         }
       } catch (err) {
         console.error('Failed to fetch session:', err);
+        // Don't show loading indicator if there's an error
+        setIsLoading(false);
       } finally {
         setIsLoading(false);
         isFetchingRef.current = false;

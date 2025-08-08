@@ -21,13 +21,16 @@ export default function Login() {
     setError(null);
 
     try {
-      // Check internet connection before attempting login
-      const isConnected = await testConnection();
-      if (!isConnected) {
-        setError('Connection error. Please check your internet connection and try again.');
-        toast.error('Connection error. Please try again in a moment.');
-        setLoading(false);
-        return;
+      // Skip connection test in SSR
+      if (typeof window !== 'undefined') {
+        // Check internet connection before attempting login
+        const isConnected = await testConnection();
+        if (!isConnected) {
+          setError('Connection error. Please check your internet connection and try again.');
+          toast.error('Connection error. Please try again in a moment.');
+          setLoading(false);
+          return;
+        }
       }
       
       // Use retry logic for the login attempt
@@ -42,7 +45,15 @@ export default function Login() {
           });
         },
         2, // Maximum 2 retries (3 attempts total)
-        1000 // Base delay of 1 second
+        1000, // Base delay of 1 second
+        // Only retry network/timeout errors, not auth errors
+        (err) => {
+          const msg = err?.message || '';
+          return msg.includes('network') || 
+                 msg.includes('timeout') || 
+                 msg.includes('connection') || 
+                 msg.includes('fetch failed');
+        }
       );
 
       if (error) {
