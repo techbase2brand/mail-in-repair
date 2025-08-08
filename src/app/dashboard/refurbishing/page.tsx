@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSupabase } from '@/components/supabase-provider';
 import { useRouter } from 'next/navigation';
 import { toast } from 'react-hot-toast';
@@ -95,10 +95,33 @@ export default function RefurbishingPage() {
   const [statusFilter, setStatusFilter] = useState<string>('all');
   const [showFilters, setShowFilters] = useState(false);
 
+  // Use refs to track fetch status and caching
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef<number | null>(null);
+  // Cache timeout in milliseconds (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
   useEffect(() => {
     if (!session) return;
-    fetchRefurbishingTickets();
+    
+    // Only fetch if we haven't fetched before, if the cache has expired, or if the status filter changes
+    if (!lastFetchedRef.current || statusFilter !== lastStatusFilterRef.current) {
+      fetchRefurbishingTickets();
+    }
+    
+    // Set up an interval to refresh data every 5 minutes
+    const intervalId = setInterval(() => {
+      fetchRefurbishingTickets();
+    }, CACHE_TIMEOUT);
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      clearInterval(intervalId);
+    };
   }, [statusFilter, session, supabase]);
+  
+  // Ref to track the last status filter used
+  const lastStatusFilterRef = useRef(statusFilter);
   
   // If no session, redirect to login
   useEffect(() => {
@@ -108,8 +131,24 @@ export default function RefurbishingPage() {
   }, [session]);
 
   const fetchRefurbishingTickets = async () => {
+    // Skip if already fetching
+    if (isFetchingRef.current) return;
+    
+    // Check if we've fetched recently (within cache timeout) and status filter hasn't changed
+    const now = Date.now();
+    if (lastFetchedRef.current && 
+        (now - lastFetchedRef.current < CACHE_TIMEOUT) && 
+        statusFilter === lastStatusFilterRef.current) {
+      console.log('Using cached refurbishing tickets data');
+      return;
+    }
+    
     try {
+      isFetchingRef.current = true;
       setLoading(true);
+      
+      // Update the last status filter ref
+      lastStatusFilterRef.current = statusFilter;
       
       // Get company ID from session
       const { data: companyData, error: companyError } = await supabase
@@ -169,12 +208,19 @@ export default function RefurbishingPage() {
         updated_at: ticket.updated_at,
       }));
 
-      setTickets(formattedTickets);
+      // Only update state if data has changed
+      if (JSON.stringify(formattedTickets) !== JSON.stringify(tickets)) {
+        setTickets(formattedTickets);
+      }
+      
+      // Update the last fetched timestamp
+      lastFetchedRef.current = Date.now();
     } catch (error) {
       console.error('Error fetching refurbishing tickets:', error);
       toast.error('Failed to load refurbishing tickets');
     } finally {
       setLoading(false);
+      isFetchingRef.current = false;
     }
   };
 

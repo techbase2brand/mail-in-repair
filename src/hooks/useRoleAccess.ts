@@ -1,5 +1,5 @@
 import { useSupabase } from '@/components/supabase-provider';
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 
 type Permission = {
   resource: string;
@@ -52,14 +52,21 @@ export const useRoleAccess = () => {
   const [userRole, setUserRole] = useState<Role | null>(null);
   const [permissions, setPermissions] = useState<Permission[]>([]);
   const [loading, setLoading] = useState(true);
+  
+  // Use a ref to track if we're already fetching to prevent duplicate requests
+  const isFetchingRef = useRef(false);
 
   useEffect(() => {
+    // Skip if no session or already fetching
+    if (!session || isFetchingRef.current) {
+      if (!session) setLoading(false);
+      return;
+    }
+    
     const fetchUserRole = async () => {
-      if (!session) {
-        setLoading(false);
-        return;
-      }
-
+      // Set fetching flag to prevent duplicate requests
+      isFetchingRef.current = true;
+      
       try {
         // First check if user has a company profile
         const { data: company, error: companyError } = await supabase
@@ -107,11 +114,17 @@ export const useRoleAccess = () => {
         console.error('Error in useRoleAccess:', error);
       } finally {
         setLoading(false);
+        // Reset the fetching flag when done
+        isFetchingRef.current = false;
       }
     };
 
     fetchUserRole();
-  }, [session, supabase]);
+    // Reset the fetching flag when done
+    return () => {
+      isFetchingRef.current = false;
+    };
+  }, [session?.user?.id]); // Only depend on the user ID, not the entire supabase object
 
   // Check if user has permission for a specific action on a resource
   const hasPermission = (resource: string, action: Permission['action']) => {

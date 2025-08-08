@@ -42,6 +42,7 @@ type BuybackTicket = {
   status: string;
   created_at: string;
   updated_at: string;
+  company_id?: string;
 };
 
 type Company = {
@@ -216,7 +217,7 @@ export default function BuybackReceiptPage({ params }: { params: { id: string } 
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('*')
-        .eq('id', ticket.company_id)
+        .eq('id', ticket.company_id || '')
         .single();
       
       if (companyError) throw companyError;
@@ -224,7 +225,7 @@ export default function BuybackReceiptPage({ params }: { params: { id: string } 
       // Generate email content
       const emailContent = generateNotificationEmail({
         companyName: companyData.name,
-        companyLogo: companyData.logo_url || undefined,
+        companyLogo: companyData.logo_url ? companyData.logo_url : undefined,
         customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
         ticketNumber: ticket.ticket_number,
         deviceInfo: `${ticket.device_type} ${ticket.device_model}`,

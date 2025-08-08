@@ -1,6 +1,6 @@
 import { NextResponse } from 'next/server';
 import nodemailer from 'nodemailer';
-import { createClient } from '@/utils/supabase/server';
+import { supabase } from '@/lib/supabase';
 
 // Create a reusable transporter object using SMTP transport
 const transporter = nodemailer.createTransport({
@@ -15,8 +15,6 @@ const transporter = nodemailer.createTransport({
 
 export async function POST(request: Request) {
   try {
-    const supabase = createClient();
-    
     // Verify authentication
     const { data: { session } } = await supabase.auth.getSession();
     if (!session) {

@@ -28,7 +28,7 @@ CREATE TABLE IF NOT EXISTS companies (
 CREATE TABLE IF NOT EXISTS user_roles (
   id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
   company_id UUID NOT NULL REFERENCES companies(id) ON DELETE CASCADE,
-  user_id UUID NOT NULL,
+  user_id UUID NOT NULL REFERENCES auth.users(id) ON DELETE CASCADE,
   role VARCHAR(50) NOT NULL, -- admin, manager, technician, receptionist, etc.
   permissions JSONB,
   created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),

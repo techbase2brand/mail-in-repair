@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/supabase-provider'
 import Link from 'next/link'
@@ -19,6 +19,14 @@ export default function Dashboard() {
   const [recentRepairs, setRecentRepairs] = useState<any[]>([])
   const [loading, setLoading] = useState(true)
 
+  // Use a ref to track if a fetch is in progress to prevent duplicate requests
+  const isFetchingRef = useRef(false);
+
+  // Store the last fetched data timestamp to prevent unnecessary fetches
+  const lastFetchedRef = useRef<number | null>(null);
+  // Cache timeout in milliseconds (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
   useEffect(() => {
     // Redirect to login if no session
     if (!session) {
@@ -28,8 +36,18 @@ export default function Dashboard() {
     
     // Fetch actual data from Supabase
     const fetchDashboardData = async () => {
+      // Skip if already fetching
+      if (isFetchingRef.current) return;
+      
+      // Check if we've fetched recently (within cache timeout)
+      const now = Date.now();
+      if (lastFetchedRef.current && (now - lastFetchedRef.current < CACHE_TIMEOUT)) {
+        console.log('Using cached dashboard data');
+        return;
+      }
       
       try {
+        isFetchingRef.current = true;
         setLoading(true);
         
         // Get company ID from session
@@ -46,75 +64,91 @@ export default function Dashboard() {
         
         const companyId = companyData.id;
         
-        // Fetch repair tickets count
-        const { count: totalRepairsCount, error: totalError } = await supabase
-          .from('repair_tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId);
+        // Use Promise.all to make parallel requests instead of sequential
+        const [
+          repairTicketsResult,
+          customersResult,
+          invoicesResult,
+          recentRepairsResult
+        ] = await Promise.all([
+          // Get all repair tickets in one query
+          supabase
+            .from('repair_tickets')
+            .select('*', { count: 'exact' })
+            .eq('company_id', companyId),
           
-        // Fetch pending repairs count
-        const { count: pendingRepairsCount, error: pendingError } = await supabase
-          .from('repair_tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .in('status', ['received', 'diagnosed', 'waiting_for_parts', 'in_progress']);
+          // Get customers count
+          supabase
+            .from('customers')
+            .select('*', { count: 'exact', head: true })
+            .eq('company_id', companyId),
           
-        // Fetch completed repairs count
-        const { count: completedRepairsCount, error: completedError } = await supabase
-          .from('repair_tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .eq('status', 'completed');
+          // Get invoices
+          supabase
+            .from('invoices')
+            .select('total_amount')
+            .eq('company_id', companyId)
+            .eq('status', 'paid'),
           
-        // Fetch urgent repairs count
-        const { count: urgentRepairsCount, error: urgentError } = await supabase
-          .from('repair_tickets')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId)
-          .eq('is_urgent', true);
-          
-        // Fetch customers count
-        const { count: customersCount, error: customersError } = await supabase
-          .from('customers')
-          .select('*', { count: 'exact', head: true })
-          .eq('company_id', companyId);
-          
-        // Fetch total revenue from invoices
-        const { data: invoicesData, error: invoicesError } = await supabase
-          .from('invoices')
-          .select('total_amount')
-          .eq('company_id', companyId)
-          .eq('status', 'paid');
-          
+          // Get recent repairs
+          supabase
+            .from('repair_tickets')
+            .select(`
+              id,
+              ticket_number,
+              device_type,
+              issue_description,
+              status,
+              created_at,
+              customers(first_name, last_name)
+            `)
+            .eq('company_id', companyId)
+            .order('created_at', { ascending: false })
+            .limit(5)
+        ]);
+        
+        // Process repair tickets to get counts
+        const repairTickets = repairTicketsResult.data || [];
+        const totalRepairsCount = repairTicketsResult.count || 0;
+        
+        // Calculate counts from the single dataset
+        const pendingRepairsCount = repairTickets.filter(ticket => 
+          ['received', 'diagnosed', 'waiting_for_parts', 'in_progress'].includes(ticket.status)
+        ).length;
+        
+        const completedRepairsCount = repairTickets.filter(ticket => 
+          ticket.status === 'completed'
+        ).length;
+        
+        const urgentRepairsCount = repairTickets.filter(ticket => 
+          ticket.is_urgent === true
+        ).length;
+        
+        // Process other results
+        const customersCount = customersResult.count || 0;
+        
+        const invoicesData = invoicesResult.data;
         const totalRevenue = invoicesData ? 
           invoicesData.reduce((sum, invoice) => sum + (invoice.total_amount || 0), 0) : 0;
         
-        setStats({
-          totalRepairs: totalRepairsCount || 0,
-          pendingRepairs: pendingRepairsCount || 0,
-          completedRepairs: completedRepairsCount || 0,
-          urgentRepairs: urgentRepairsCount || 0,
-          totalCustomers: customersCount || 0,
+        // Update stats state only if data has changed
+        const newStats = {
+          totalRepairs: totalRepairsCount,
+          pendingRepairs: pendingRepairsCount,
+          completedRepairs: completedRepairsCount,
+          urgentRepairs: urgentRepairsCount,
+          totalCustomers: customersCount,
           totalRevenue: totalRevenue,
-        });
+        };
+        
+        // Only update if the data has changed
+        if (JSON.stringify(newStats) !== JSON.stringify(stats)) {
+          setStats(newStats);
+        }
 
-        // Fetch recent repairs
-        const { data: recentRepairsData, error: recentError } = await supabase
-          .from('repair_tickets')
-          .select(`
-            id,
-            ticket_number,
-            device_type,
-            issue_description,
-            status,
-            created_at,
-            customers(first_name, last_name)
-          `)
-          .eq('company_id', companyId)
-          .order('created_at', { ascending: false })
-          .limit(5);
-          
-        if (recentRepairsData) {
+        // Process recent repairs
+        const recentRepairsData = recentRepairsResult.data;
+        if (recentRepairsData && recentRepairsData.length > 0) {
           const formattedRepairs = recentRepairsData.map(repair => ({
             id: repair.ticket_number,
             customer: `${(repair.customers as any).first_name} ${(repair.customers as any).last_name}`,
@@ -124,8 +158,14 @@ export default function Dashboard() {
             date: new Date(repair.created_at).toISOString().split('T')[0],
           }));
           
-          setRecentRepairs(formattedRepairs);
+          // Only update if the data has changed
+          if (JSON.stringify(formattedRepairs) !== JSON.stringify(recentRepairs)) {
+            setRecentRepairs(formattedRepairs);
+          }
         }
+        
+        // Update the last fetched timestamp
+        lastFetchedRef.current = Date.now();
       } catch (error) {
         console.error('Error fetching dashboard data:', error);
         // Fallback to mock data if there's an error
@@ -141,11 +181,26 @@ export default function Dashboard() {
         setRecentRepairs([]);
       } finally {
         setLoading(false);
+        isFetchingRef.current = false;
       }
     };
 
-    fetchDashboardData();
-  }, [session, supabase]);
+    // Only fetch if we haven't fetched before or if the cache has expired
+    if (!lastFetchedRef.current) {
+      fetchDashboardData();
+    }
+    
+    // Set up an interval to refresh data every 5 minutes instead of continuous polling
+    const intervalId = setInterval(() => {
+      fetchDashboardData();
+    }, CACHE_TIMEOUT); // Use the same timeout for interval
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      clearInterval(intervalId);
+      isFetchingRef.current = false; // Reset the fetching flag on cleanup
+    };
+  }, [session?.user?.id, router, supabase, stats, recentRepairs]); // Include all dependencies
 
   // If no session, redirect to login
   useEffect(() => {
@@ -153,14 +208,6 @@ export default function Dashboard() {
       window.location.href = '/login';
     }
   }, [session]);
-
-  if (loading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
-      </div>
-    );
-  }
 
   const getStatusClass = (status: string) => {
     switch (status.toLowerCase()) {
@@ -180,6 +227,14 @@ export default function Dashboard() {
   }
 
   if (loading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <div className="animate-spin rounded-full h-12 w-12 border-t-2 border-b-2 border-primary-600"></div>
+      </div>
+    );
+  }
+
+  if (isFetchingRef.current) {
     return (
       <div className="p-4 sm:p-6 lg:p-8">
         <div className="animate-pulse">

@@ -82,7 +82,7 @@ export default function RolesManagementPage() {
             id: 'owner',
             user_id: companyDetails.user_id,
             role: companyDetails.owner_role,
-            email: companyDetails.auth_users?.email,
+            email: companyDetails.auth_users && companyDetails.auth_users[0]?.email,
             isOwner: true
           },
           // Other users with roles

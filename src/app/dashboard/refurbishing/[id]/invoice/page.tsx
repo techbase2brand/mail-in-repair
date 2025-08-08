@@ -189,7 +189,7 @@ export default function RefurbishingInvoice({ params }: { params: { id: string }
       // Generate email content
       const emailContent = generateNotificationEmail({
         companyName: ticket.company.name,
-        companyLogo: ticket.company.logo_url,
+        companyLogo: ticket.company.logo_url ? ticket.company.logo_url : undefined,
         customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
         ticketNumber: ticket.ticket_number,
         deviceInfo: `${ticket.device_type} ${ticket.device_model}`,

@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useRef } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import { useSupabase } from '@/components/supabase-provider'
 import Link from 'next/link'
@@ -54,6 +54,9 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const [userProfile, setUserProfile] = useState<any>(null)
   const [loading, setLoading] = useState(true)
 
+  // Use a ref to track if we're already fetching to prevent duplicate requests
+  const isFetchingRef = useRef(false);
+
   useEffect(() => {
     // Check if user is logged in
     if (!session) {
@@ -63,6 +66,12 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
     // Fetch user profile
     const fetchUserProfile = async () => {
+      // Skip if already fetching
+      if (isFetchingRef.current) return;
+      
+      // Set fetching flag to prevent duplicate requests
+      isFetchingRef.current = true;
+      
       try {
         const { data, error } = await supabase
           .from('companies')
@@ -72,18 +81,28 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
 
         if (error) {
           console.error('Error fetching user profile:', error)
-        } else {
-          setUserProfile(data)
+        } else if (data) {
+          // Only update state if data is different to prevent unnecessary re-renders
+          if (JSON.stringify(data) !== JSON.stringify(userProfile)) {
+            setUserProfile(data)
+          }
         }
       } catch (err) {
         console.error('Error:', err)
       } finally {
         setLoading(false)
+        // Reset the fetching flag when done
+        isFetchingRef.current = false;
       }
     }
 
     fetchUserProfile()
-  }, [session, router, supabase])
+    
+    // Clean up function to reset fetching flag when component unmounts
+    return () => {
+      isFetchingRef.current = false;
+    };
+  }, [session?.user?.id, router, supabase, userProfile]) // Include all dependencies
 
   const handleSignOut = async () => {
     await supabase.auth.signOut()
@@ -93,7 +112,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   // Navigation configuration
 
   // Navigation items with permission requirements
-  const navigation = [
+  const navigation: Array<{
+    name: string;
+    href: string;
+    icon: React.ComponentType<any>;
+    requiredPermission?: {
+      resource: string;
+      action: 'create' | 'read' | 'update' | 'delete' | 'manage';
+    };
+  }> = [
     { name: 'Dashboard', href: '/dashboard', icon: PackageIcon },
     { 
       name: 'Repairs', 
@@ -134,7 +161,15 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   ]
 
   // Secondary navigation items with permission requirements
-  const secondaryNavigation = [
+  const secondaryNavigation: Array<{
+    name: string;
+    href: string;
+    icon: React.ComponentType<any>;
+    requiredPermission?: {
+      resource: string;
+      action: 'create' | 'read' | 'update' | 'delete' | 'manage';
+    };
+  }> = [
     { 
       name: 'Buyback Module', 
       href: '/dashboard/buyback', 
@@ -203,7 +238,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
               <div className="flex items-center">
                 <div>
                   <div className="h-9 w-9 rounded-full bg-primary-600 flex items-center justify-center text-white font-medium text-sm">
-                    {userProfile?.name?.charAt(0) || session?.user?.email?.charAt(0) || '?'}
+                    {(userProfile?.name && userProfile.name.charAt(0)) || (session?.user?.email && session.user.email.charAt(0)) || '?'}
                   </div>
                 </div>
                 <div className="ml-3">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useSupabase } from '@/components/supabase-provider';
 import { SearchIcon, FilterIcon, PlusIcon, Edit2Icon, TrashIcon } from '@/components/icons';
 import Link from 'next/link';
@@ -29,11 +29,28 @@ export default function RepairsPage() {
   
   // No redirect needed as we'll use this page directly
 
+  // Use refs to track fetch status and caching
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef<number | null>(null);
+  // Cache timeout in milliseconds (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
   useEffect(() => {
     if (!session) return;
     
     const fetchRepairs = async () => {
+      // Skip if already fetching
+      if (isFetchingRef.current) return;
+      
+      // Check if we've fetched recently (within cache timeout)
+      const now = Date.now();
+      if (lastFetchedRef.current && (now - lastFetchedRef.current < CACHE_TIMEOUT)) {
+        console.log('Using cached repairs data');
+        return;
+      }
+      
       try {
+        isFetchingRef.current = true;
         setLoading(true);
         
         // Get company ID from session
@@ -88,16 +105,37 @@ export default function RepairsPage() {
             is_urgent: repair.is_urgent as boolean,
           }));
           
-          setRepairs(formattedRepairs);
+          // Only update state if data has changed
+          if (JSON.stringify(formattedRepairs) !== JSON.stringify(repairs)) {
+            setRepairs(formattedRepairs);
+          }
         }
+        
+        // Update the last fetched timestamp
+        lastFetchedRef.current = Date.now();
       } catch (error) {
         console.error('Error fetching repairs:', error);
       } finally {
         setLoading(false);
+        isFetchingRef.current = false;
       }
     };
 
-    fetchRepairs();
+    // Only fetch if we haven't fetched before or if the cache has expired
+    if (!lastFetchedRef.current) {
+      fetchRepairs();
+    }
+    
+    // Set up an interval to refresh data every 5 minutes
+    const intervalId = setInterval(() => {
+      fetchRepairs();
+    }, CACHE_TIMEOUT);
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      clearInterval(intervalId);
+      isFetchingRef.current = false; // Reset the fetching flag on cleanup
+    };
   }, [session, supabase]);
 
   // If no session, redirect to login

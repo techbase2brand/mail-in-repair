@@ -223,15 +223,15 @@ export default function RepairInvoicePage({ params }: { params: { id: string } }
       const { data: companyData, error: companyError } = await supabase
         .from('companies')
         .select('*')
-        .eq('id', company.id)
+        .eq('id', company?.id || '')
         .single();
       
       if (companyError) throw companyError;
       
       // Generate email content
       const emailContent = generateNotificationEmail({
-        companyName: company.name,
-        companyLogo: company.logo_url || undefined,
+        companyName: company?.name || 'Company',
+        companyLogo: company?.logo_url ? company.logo_url : undefined,
         customerName: `${ticket.customer.first_name} ${ticket.customer.last_name}`,
         ticketNumber: ticket.ticket_number,
         deviceInfo: `${ticket.device_type} ${ticket.device_model}`,

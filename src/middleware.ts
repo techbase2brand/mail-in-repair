@@ -2,6 +2,10 @@ import { createMiddlewareClient } from '@supabase/auth-helpers-nextjs'
 import { NextResponse } from 'next/server'
 import type { NextRequest } from 'next/server'
 
+export const config = {
+  runtime: 'nodejs'
+}
+
 export async function middleware(req: NextRequest) {
   // Create a response object
   const res = NextResponse.next()

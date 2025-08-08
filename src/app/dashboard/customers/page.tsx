@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import { useSupabase } from '@/components/supabase-provider';
 import { toast } from 'react-hot-toast';
@@ -41,6 +41,12 @@ export default function CustomersPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [filterType, setFilterType] = useState('all');
   
+  // Use refs to track fetch status and caching
+  const isFetchingRef = useRef(false);
+  const lastFetchedRef = useRef<number | null>(null);
+  // Cache timeout in milliseconds (5 minutes)
+  const CACHE_TIMEOUT = 5 * 60 * 1000;
+
   useEffect(() => {
     // Redirect to login if no session
     if (!session) {
@@ -48,11 +54,36 @@ export default function CustomersPage() {
       return;
     }
     
-    fetchCustomers();
+    // Only fetch if we haven't fetched before or if the cache has expired
+    if (!lastFetchedRef.current) {
+      fetchCustomers();
+    }
+    
+    // Set up an interval to refresh data every 5 minutes
+    const intervalId = setInterval(() => {
+      fetchCustomers();
+    }, CACHE_TIMEOUT);
+    
+    // Clean up the interval when the component unmounts
+    return () => {
+      clearInterval(intervalId);
+      isFetchingRef.current = false; // Reset the fetching flag on cleanup
+    };
   }, [session, router]);
   
   const fetchCustomers = async () => {
+    // Skip if already fetching
+    if (isFetchingRef.current) return;
+    
+    // Check if we've fetched recently (within cache timeout)
+    const now = Date.now();
+    if (lastFetchedRef.current && (now - lastFetchedRef.current < CACHE_TIMEOUT)) {
+      console.log('Using cached customers data');
+      return;
+    }
+    
     try {
+      isFetchingRef.current = true;
       setLoading(true);
       
       // Get company ID from session
@@ -96,7 +127,13 @@ export default function CustomersPage() {
         return;
       }
       
-      setCustomers(data || []);
+      // Only update state if data has changed
+      if (JSON.stringify(data) !== JSON.stringify(customers)) {
+        setCustomers(data || []);
+      }
+      
+      // Update the last fetched timestamp
+      lastFetchedRef.current = Date.now();
     } catch (error) {
       console.error('Error fetching customers:', error);
       toast.error('An unexpected error occurred');
