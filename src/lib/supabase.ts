@@ -9,6 +9,22 @@ if (!process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY) {
   throw new Error('Missing environment variable: NEXT_PUBLIC_SUPABASE_ANON_KEY');
 }
 
+// Custom fetch with timeout and retry logic
+const fetchWithTimeout = async (input: RequestInfo | URL, init?: RequestInit, timeout = 15000): Promise<Response> => {
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeout);
+  
+  try {
+    const response = await fetch(input, {
+      ...init,
+      signal: controller.signal
+    });
+    return response;
+  } finally {
+    clearTimeout(timeoutId);
+  }
+};
+
 // Create a single supabase client for the entire application
 export const supabase = createClient<Database>(
   process.env.NEXT_PUBLIC_SUPABASE_URL,
@@ -19,10 +35,36 @@ export const supabase = createClient<Database>(
       persistSession: true,
       detectSessionInUrl: true,
       flowType: 'pkce',
-      debug: false
+      debug: false,
+      storageKey: 'prc-repair-auth-token',
+      storage: {
+        getItem: (key) => {
+          try {
+            const storedItem = localStorage.getItem(key);
+            return storedItem;
+          } catch (error) {
+            console.error('Error accessing localStorage:', error);
+            return null;
+          }
+        },
+        setItem: (key, value) => {
+          try {
+            localStorage.setItem(key, value);
+          } catch (error) {
+            console.error('Error writing to localStorage:', error);
+          }
+        },
+        removeItem: (key) => {
+          try {
+            localStorage.removeItem(key);
+          } catch (error) {
+            console.error('Error removing from localStorage:', error);
+          }
+        }
+      }
     },
     global: {
-      fetch: fetch,
+      fetch: fetchWithTimeout,
       headers: { 'x-application-name': 'prc-repair-management' }
     },
     db: {

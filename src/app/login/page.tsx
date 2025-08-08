@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useSupabase } from '@/components/supabase-provider'
 import Link from 'next/link'
 import { toast } from 'react-hot-toast'
+import { testConnection, withRetry } from '@/utils/connection'
 
 export default function Login() {
   const router = useRouter()
@@ -20,13 +21,29 @@ export default function Login() {
     setError(null);
 
     try {
-      // Add a small delay to ensure the request doesn't get throttled
-      await new Promise(resolve => setTimeout(resolve, 500));
+      // Check internet connection before attempting login
+      const isConnected = await testConnection();
+      if (!isConnected) {
+        setError('Connection error. Please check your internet connection and try again.');
+        toast.error('Connection error. Please try again in a moment.');
+        setLoading(false);
+        return;
+      }
       
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
+      // Use retry logic for the login attempt
+      const { data, error } = await withRetry(
+        async () => {
+          // Add a small delay to ensure the request doesn't get throttled
+          await new Promise(resolve => setTimeout(resolve, 500));
+          
+          return await supabase.auth.signInWithPassword({
+            email,
+            password
+          });
+        },
+        2, // Maximum 2 retries (3 attempts total)
+        1000 // Base delay of 1 second
+      );
 
       if (error) {
         console.error('Login error details:', error);
@@ -36,7 +53,7 @@ export default function Login() {
         } else if (error.message.includes('Invalid login credentials')) {
           setError('Invalid email or password. Please check your credentials and try again.');
           toast.error('Invalid email or password');
-        } else if (error.message.includes('Failed to fetch')) {
+        } else if (error.message.includes('Failed to fetch') || error.message.includes('fetch failed') || error.message.includes('network') || error.message.includes('connection')) {
           setError('Connection error. Please check your internet connection and try again.');
           toast.error('Connection error. Please try again in a moment.');
         } else {
@@ -103,8 +120,16 @@ export default function Login() {
       }
     } catch (err) {
       console.error('Login error:', err);
-      setError('An unexpected error occurred');
-      toast.error('An unexpected error occurred');
+      if (err instanceof Error && err.message === 'Request timeout') {
+        setError('Connection timed out. Please check your internet connection and try again.');
+        toast.error('Connection timed out. Please try again in a moment.');
+      } else if (err instanceof Error && (err.message.includes('fetch') || err.message.includes('network') || err.message.includes('connection'))) {
+        setError('Connection error. Please check your internet connection and try again.');
+        toast.error('Connection error. Please try again in a moment.');
+      } else {
+        setError('An unexpected error occurred');
+        toast.error('An unexpected error occurred');
+      }
     } finally {
       setLoading(false);
     }

@@ -6,6 +6,7 @@ import { useRouter } from 'next/navigation';
 import { SupabaseClient } from '@supabase/supabase-js';
 import dynamic from 'next/dynamic';
 import { initializeStorageBuckets } from '@/lib/storage-init';
+import { testConnection, withRetry } from '@/utils/connection';
 
 type SupabaseContextType = {
   supabase: SupabaseClient<any, "public", any>;
@@ -58,19 +59,33 @@ export function SupabaseProvider({ children }: { children: React.ReactNode }) {
       try {
         isFetchingRef.current = true;
         
-        const { data, error } = await supabase.auth.getSession();
+        // Check connection before attempting to fetch session
+        const isConnected = await testConnection();
+        if (!isConnected) {
+          console.error('No internet connection available');
+          throw new Error('Connection error');
+        }
+        
+        // Use retry logic for fetching the session
+        const { data, error } = await withRetry(
+          async () => await supabase.auth.getSession(),
+          3, // Maximum 3 retries (4 attempts total)
+          1000 // Base delay of 1 second
+        );
+        
         if (error) {
           console.error('Error fetching session:', error.message);
+          throw error;
         } else {
           // Only update session if it's different to prevent unnecessary re-renders
           const newSession = data.session;
           if (JSON.stringify(newSession) !== JSON.stringify(session)) {
             setSession(newSession);
           }
+          
+          // Update the last fetched timestamp
+          lastSessionFetchRef.current = Date.now();
         }
-        
-        // Update the last fetched timestamp
-        lastSessionFetchRef.current = Date.now();
       } catch (err) {
         console.error('Failed to fetch session:', err);
       } finally {
